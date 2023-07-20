@@ -19,3 +19,5 @@ web/extensions/*
 *.png
 *.jpg
 *.jpeg
+*.gif
+.venv/*
