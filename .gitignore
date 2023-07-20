@@ -16,5 +16,9 @@ web/extensions/*
 !web/extensions/core/
 
 # TT
-.env
-.env/*
+.venv
+.venv/*
+
+*.jpg
+*.jpeg
+*.png
