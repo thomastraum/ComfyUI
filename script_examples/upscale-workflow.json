@@ -1,0 +1,223 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 1947236350,
+      "steps": 25,
+      "cfg": 10,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 0.01,
+      "model": ["29", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["34", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "6": {
+    "inputs": {
+      "text": "a macro photo of a beautiful long icicles growing over a lily flower inside a glacier,  insane detail, 8k, frost, wet, (cracked:1.4), (best quality:1.4), waterdrops, wet, forming ice constructs, embedded frost gems",
+      "clip": ["60", 1]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "7": {
+    "inputs": {
+      "text": "text, watermark, painting, cartoons, sketch, worst quality, products, oversaturated, overexposed, cheap, EasyNegative, (skin:1.4), human, person, (face:1.4), lips, (oversaturated), (blue)",
+      "clip": ["29", 1]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "8": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["29", 2]
+    },
+    "class_type": "VAEDecode"
+  },
+  "20": {
+    "inputs": {
+      "image": "04691-1947236347-a macro photo of a beautiful long icicles growing over a lily flower inside a glacier,  insane detail, 8k, frost, wet, (cracked_ (1).png",
+      "choose file to upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "29": {
+    "inputs": {
+      "ckpt_name": "realisticVisionV40_v40VAE.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "30": {
+    "inputs": {
+      "channel": "red",
+      "image": ["33", 0]
+    },
+    "class_type": "ImageToMask"
+  },
+  "32": {
+    "inputs": {
+      "image": "product-chip-v002-Camera_2_crypto_object_00000-half-512.png",
+      "choose file to upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "33": {
+    "inputs": {
+      "image": ["32", 0]
+    },
+    "class_type": "ImageInvert"
+  },
+  "34": {
+    "inputs": {
+      "pixels": ["20", 0],
+      "vae": ["29", 2]
+    },
+    "class_type": "VAEEncode"
+  },
+  "39": {
+    "inputs": {
+      "samples": ["34", 0],
+      "mask": ["30", 0]
+    },
+    "class_type": "SetLatentNoiseMask"
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "add_detail.safetensors",
+      "strength_model": 2,
+      "strength_clip": 2,
+      "model": ["29", 0],
+      "clip": ["29", 1]
+    },
+    "class_type": "LoraLoader"
+  },
+  "67": {
+    "inputs": {
+      "model_name": "4x-UltraSharp.pth"
+    },
+    "class_type": "UpscaleModelLoader"
+  },
+  "70": {
+    "inputs": {
+      "control_net_name": "control_v11f1e_sd15_tile.pth"
+    },
+    "class_type": "ControlNetLoader"
+  },
+  "71": {
+    "inputs": {
+      "strength": 1,
+      "conditioning": ["6", 0],
+      "control_net": ["70", 0],
+      "image": ["8", 0]
+    },
+    "class_type": "ControlNetApply"
+  },
+  "73": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 2,
+      "image": ["33", 0]
+    },
+    "class_type": "ImageScaleBy"
+  },
+  "74": {
+    "inputs": {
+      "channel": "red",
+      "image": ["73", 0]
+    },
+    "class_type": "ImageToMask"
+  },
+  "75": {
+    "inputs": {
+      "strength": 1,
+      "set_cond_area": "default",
+      "conditioning": ["71", 0],
+      "mask": ["74", 0]
+    },
+    "class_type": "ConditioningSetMask"
+  },
+  "84": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 2,
+      "image": ["20", 0]
+    },
+    "class_type": "ImageScaleBy"
+  },
+  "94": {
+    "inputs": {
+      "vae": ["29", 2]
+    },
+    "class_type": "VAEDecode"
+  },
+  "95": {
+    "inputs": {
+      "filename_prefix": "chip_upscale_latent_ksampler",
+      "images": ["94", 0]
+    },
+    "class_type": "SaveImage"
+  },
+  "96": {
+    "inputs": {
+      "filename_prefix": "chip",
+      "images": ["8", 0]
+    },
+    "class_type": "SaveImage"
+  },
+  "98": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "scale_by": 1.5,
+      "samples": ["34", 0]
+    },
+    "class_type": "LatentUpscaleBy"
+  },
+  "101": {
+    "inputs": {
+      "filename_prefix": "chip_iterative_upscale_latent"
+    },
+    "class_type": "SaveImage"
+  },
+  "103": {
+    "inputs": {
+      "filename_prefix": "chip_iterative_upscale_image"
+    },
+    "class_type": "SaveImage"
+  },
+  "105": {
+    "inputs": {
+      "upscale_by": 1.5,
+      "seed": 1947236350,
+      "steps": 96,
+      "cfg": 13,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 0.35,
+      "mode_type": "Linear",
+      "tile_width": 576,
+      "tile_height": 720,
+      "mask_blur": 8,
+      "tile_padding": 32,
+      "seam_fix_mode": "Half Tile",
+      "seam_fix_denoise": 0.3,
+      "seam_fix_width": 64,
+      "seam_fix_mask_blur": 16,
+      "seam_fix_padding": 32,
+      "image": ["20", 0],
+      "model": ["29", 0],
+      "positive": ["71", 0],
+      "negative": ["7", 0],
+      "vae": ["29", 2],
+      "upscale_model": ["67", 0]
+    },
+    "class_type": "UltimateSDUpscale"
+  },
+  "106": {
+    "inputs": {
+      "filename_prefix": "chip_ultimate",
+      "images": ["105", 0]
+    },
+    "class_type": "SaveImage"
+  }
+}

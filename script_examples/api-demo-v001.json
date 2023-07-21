@@ -1,0 +1,75 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 1947236350,
+      "steps": 25,
+      "cfg": 10,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 0.3,
+      "model": ["29", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["34", 0]
+    },
+    "class_type": "KSampler"
+  },
+  "6": {
+    "inputs": {
+      "text": "a macro photo of a beautiful long icicles growing over a lily flower inside a glacier,  insane detail, 8k, frost, wet, (cracked:1.4), (best quality:1.4), waterdrops, wet, forming ice constructs, embedded frost gems",
+      "clip": ["60", 1]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "7": {
+    "inputs": {
+      "text": "text, watermark, painting, cartoons, sketch, worst quality, products, oversaturated, overexposed, cheap, EasyNegative, (skin:1.4), human, person, (face:1.4), lips, (oversaturated), (blue)",
+      "clip": ["29", 1]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "20": {
+    "inputs": {
+      "image": "04691-1947236347-a macro photo of a beautiful long icicles growing over a lily flower inside a glacier,  insane detail, 8k, frost, wet, (cracked_ (1).png",
+      "choose file to upload": "image"
+    },
+    "class_type": "LoadImage"
+  },
+  "29": {
+    "inputs": {
+      "ckpt_name": "realisticVisionV40_v40VAE.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "34": {
+    "inputs": {
+      "pixels": ["20", 0],
+      "vae": ["29", 2]
+    },
+    "class_type": "VAEEncode"
+  },
+  "60": {
+    "inputs": {
+      "lora_name": "add_detail.safetensors",
+      "strength_model": 2,
+      "strength_clip": 2,
+      "model": ["29", 0],
+      "clip": ["29", 1]
+    },
+    "class_type": "LoraLoader"
+  },
+  "110": {
+    "inputs": {
+      "samples": ["3", 0],
+      "vae": ["29", 2]
+    },
+    "class_type": "VAEDecode"
+  },
+  "111": {
+    "inputs": {
+      "filename_prefix": "api_demo",
+      "images": ["110", 0]
+    },
+    "class_type": "SaveImage"
+  }
+}
