@@ -3,6 +3,8 @@ import math
 import struct
 import comfy.checkpoint_pickle
 import safetensors.torch
+import numpy as np
+from PIL import Image
 
 def load_torch_file(ckpt, safe_load=False, device=None):
     if device is None:
@@ -31,6 +33,32 @@ def save_torch_file(sd, ckpt, metadata=None):
         safetensors.torch.save_file(sd, ckpt, metadata=metadata)
     else:
         safetensors.torch.save_file(sd, ckpt)
+
+def calculate_parameters(sd, prefix=""):
+    params = 0
+    for k in sd.keys():
+        if k.startswith(prefix):
+            params += sd[k].nelement()
+    return params
+
+def state_dict_key_replace(state_dict, keys_to_replace):
+    for x in keys_to_replace:
+        if x in state_dict:
+            state_dict[keys_to_replace[x]] = state_dict.pop(x)
+    return state_dict
+
+def state_dict_prefix_replace(state_dict, replace_prefix, filter_keys=False):
+    if filter_keys:
+        out = {}
+    else:
+        out = state_dict
+    for rp in replace_prefix:
+        replace = list(map(lambda a: (a, "{}{}".format(replace_prefix[rp], a[len(rp):])), filter(lambda a: a.startswith(rp), state_dict.keys())))
+        for x in replace:
+            w = state_dict.pop(x[0])
+            out[x[1]] = w
+    return out
+
 
 def transformers_convert(sd, prefix_from, prefix_to, number):
     keys_to_replace = {
@@ -216,6 +244,13 @@ def unet_to_diffusers(unet_config):
 
     return diffusers_unet_map
 
+def repeat_to_batch_size(tensor, batch_size):
+    if tensor.shape[0] > batch_size:
+        return tensor[:batch_size]
+    elif tensor.shape[0] < batch_size:
+        return tensor.repeat([math.ceil(batch_size / tensor.shape[0])] + [1] * (len(tensor.shape) - 1))[:batch_size]
+    return tensor
+
 def convert_sd_to(state_dict, dtype):
     keys = list(state_dict.keys())
     for k in keys:
@@ -229,6 +264,20 @@ def safetensors_header(safetensors_path, max_size=100*1024*1024):
         if length_of_header > max_size:
             return None
         return f.read(length_of_header)
+
+def set_attr(obj, attr, value):
+    attrs = attr.split(".")
+    for name in attrs[:-1]:
+        obj = getattr(obj, name)
+    prev = getattr(obj, attrs[-1])
+    setattr(obj, attrs[-1], torch.nn.Parameter(value))
+    del prev
+
+def get_attr(obj, attr):
+    attrs = attr.split(".")
+    for name in attrs:
+        obj = getattr(obj, name)
+    return obj
 
 def bislerp(samples, width, height):
     def slerp(b1, b2, r):
@@ -304,6 +353,13 @@ def bislerp(samples, width, height):
     result = result.reshape(n, h_new, w_new, c).movedim(-1, 1)
     return result
 
+def lanczos(samples, width, height):
+    images = [Image.fromarray(np.clip(255. * image.movedim(0, -1).cpu().numpy(), 0, 255).astype(np.uint8)) for image in samples]
+    images = [image.resize((width, height), resample=Image.Resampling.LANCZOS) for image in images]
+    images = [torch.from_numpy(np.array(image).astype(np.float32) / 255.0).movedim(-1, 0) for image in images]
+    result = torch.stack(images)
+    return result
+
 def common_upscale(samples, width, height, upscale_method, crop):
         if crop == "center":
             old_width = samples.shape[3]
@@ -322,6 +378,8 @@ def common_upscale(samples, width, height, upscale_method, crop):
 
         if upscale_method == "bislerp":
             return bislerp(s, width, height)
+        elif upscale_method == "lanczos":
+            return lanczos(s, width, height)
         else:
             return torch.nn.functional.interpolate(s, size=(height, width), mode=upscale_method)
 
@@ -355,6 +413,10 @@ def tiled_scale(samples, function, tile_x=64, tile_y=64, overlap = 8, upscale_am
         output[b:b+1] = out/out_div
     return output
 
+PROGRESS_BAR_ENABLED = True
+def set_progress_bar_enabled(enabled):
+    global PROGRESS_BAR_ENABLED
+    PROGRESS_BAR_ENABLED = enabled
 
 PROGRESS_BAR_HOOK = None
 def set_progress_bar_global_hook(function):
