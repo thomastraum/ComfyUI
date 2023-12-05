@@ -24,7 +24,7 @@ export function getPngMetadata(file) {
 				const length = dataView.getUint32(offset);
 				// Get the chunk type
 				const type = String.fromCharCode(...pngData.slice(offset + 4, offset + 8));
-				if (type === "tEXt") {
+				if (type === "tEXt" || type == "comf") {
 					// Get the keyword
 					let keyword_end = offset + 8;
 					while (pngData[keyword_end] !== 0) {
@@ -50,7 +50,6 @@ export function getPngMetadata(file) {
 function parseExifData(exifData) {
 	// Check for the correct TIFF header (0x4949 for little-endian or 0x4D4D for big-endian)
 	const isLittleEndian = new Uint16Array(exifData.slice(0, 2))[0] === 0x4949;
-	console.log(exifData);
 
 	// Function to read 16-bit and 32-bit integers from binary data
 	function readInt(offset, isLittleEndian, length) {
@@ -108,29 +107,28 @@ export function getWebpMetadata(file) {
 	return new Promise((r) => {
 		const reader = new FileReader();
 		reader.onload = (event) => {
-			// Get the PNG data as a Uint8Array
-			const pngData = new Uint8Array(event.target.result);
-			const dataView = new DataView(pngData.buffer);
+			const webp = new Uint8Array(event.target.result);
+			const dataView = new DataView(webp.buffer);
 
-			// Check that the PNG signature is present
+			// Check that the WEBP signature is present
 			if (dataView.getUint32(0) !== 0x52494646 || dataView.getUint32(8) !== 0x57454250) {
 				console.error("Not a valid WEBP file");
 				r();
 				return;
 			}
 
-			// Start searching for chunks after the PNG signature
+			// Start searching for chunks after the WEBP signature
 			let offset = 12;
 			let txt_chunks = {};
-			// Loop through the chunks in the PNG file
-			while (offset < pngData.length) {
-				// Get the length of the chunk
-				const length = dataView.getUint32(offset + 4, true);
-				// Get the chunk type
-				const type = String.fromCharCode(...pngData.slice(offset, offset + 4));
-				if (type === "EXIF") {
-					// Get the keyword
-					let data = parseExifData(pngData.slice(offset + 8, offset + 8 + length));
+			// Loop through the chunks in the WEBP file
+			while (offset < webp.length) {
+				const chunk_length = dataView.getUint32(offset + 4, true);
+				const chunk_type = String.fromCharCode(...webp.slice(offset, offset + 4));
+				if (chunk_type === "EXIF") {
+					if (String.fromCharCode(...webp.slice(offset + 8, offset + 8 + 6)) == "Exif\0\0") {
+						offset += 6;
+					}
+					let data = parseExifData(webp.slice(offset + 8, offset + 8 + chunk_length));
 					for (var key in data) {
 						var value = data[key];
 						let index = value.indexOf(':');
@@ -138,7 +136,7 @@ export function getWebpMetadata(file) {
 					}
 				}
 
-				offset += 8 + length;
+				offset += 8 + chunk_length;
 			}
 
 			r(txt_chunks);
