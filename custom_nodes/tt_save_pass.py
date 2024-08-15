@@ -1,4 +1,3 @@
-
 import torch
 
 import os
@@ -7,7 +6,18 @@ from PIL import Image, ImageOps, ImageSequence, ImageFile
 
 import numpy as np
 
+from aiohttp import web
+from server import PromptServer
+import folder_paths
+import time
+import imghdr
+
+import hashlib
+import json
+
 class TT_Save_Pass:
+
+
     """
     A example node
 
@@ -36,32 +46,110 @@ class TT_Save_Pass:
         The entry point method. The name of this method must be the same as the value of property `FUNCTION`.
         For example, if `FUNCTION = "execute"` then this method's name must be `execute`, if `FUNCTION = "foo"` then it must be `foo`.
     """
+    RENDER_PASSES_DIRECTORY = os.path.join(folder_paths.get_output_directory(), "render_passes")
+    DEFAULT_PASS = "beauty"
+    LAST_UPDATE_FILE = os.path.join(RENDER_PASSES_DIRECTORY, "last_update.json")
+    
     def __init__(self):
         pass
     
     @classmethod
-    def INPUT_TYPES(s):
-        input_dir = folder_paths.get_input_directory()
+    def get_last_update_time(cls):
+        print(f"get_last_update_time called. LAST_UPDATE_FILE: {cls.LAST_UPDATE_FILE}")
+        if os.path.exists(cls.LAST_UPDATE_FILE):
+            with open(cls.LAST_UPDATE_FILE, 'r') as f:
+                data = json.load(f)
+                return data.get('last_update_time', 0)
+        return 0
+
+    @classmethod
+    def set_last_update_time(cls, timestamp):
+        os.makedirs(os.path.dirname(cls.LAST_UPDATE_FILE), exist_ok=True)
+        with open(cls.LAST_UPDATE_FILE, 'w') as f:
+            json.dump({'last_update_time': timestamp}, f)
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        input_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, cls.DEFAULT_PASS)
         files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
         return {
             "required":{
                 "image": (sorted(files), {"image_upload": True}),
                 "print_to_screen": (["enable", "disable"],),
                 "string_field": ("STRING", {
-                    "multiline": False, #True if you want the field to look like the one on the ClipTextEncode node
+                    "multiline": False,
                     "default": "Hello World!"
                 }),
             },
         }
+    @classmethod
+    def get_render_pass_directory(cls, pass_name: str) -> str:
+        pass_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, pass_name)
+        os.makedirs(pass_dir, exist_ok=True)
+        return pass_dir
+
+    @staticmethod
+    def get_image_type(file_content: bytes) -> str:
+        image_type = imghdr.what(None, file_content)
+        return image_type if image_type else "unknown"
     
+    @classmethod
+    def get_annotated_filepath(cls, name: str, default_pass: str | None = None) -> str:
+        name, base_dir = cls.annotated_filepath(name)
+
+        if base_dir is None:
+            if default_pass is not None:
+                base_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, default_pass)
+            else:
+                base_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, cls.DEFAULT_PASS)
+
+        return os.path.join(base_dir, name)
+    
+    @classmethod
+    def annotated_filepath(cls, name: str) -> tuple[str, str | None]:
+        for pass_name in os.listdir(cls.RENDER_PASSES_DIRECTORY):
+            if name.endswith(f"[{pass_name}]"):
+                base_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, pass_name)
+                name = name[:-len(f"[{pass_name}]")]
+                return name, base_dir
+
+        return name, None
+    
+    @classmethod
+    def save_image_route(cls):
+        @PromptServer.instance.routes.post("/save_image")
+        async def save_image(request):
+            data = await request.post()
+            image = data['uploaded_image']
+            render_pass = data.get('image_type', 'unknown')
+
+            # Get the original filename
+            original_filename = image.filename
+            name, ext = os.path.splitext(original_filename)
+
+            image_content = image.file.read()
+            image_type = cls.get_image_type(image_content)
+
+            # Add timestamp to the filename
+            timestamp = int(time.time())
+            filename = f"{name}_{timestamp}{ext}"
+
+            render_pass_dir = cls.get_render_pass_directory(render_pass)
+            filepath = os.path.join(render_pass_dir, filename)
+
+            with open(filepath, 'wb') as f:
+                f.write(image_content)
+
+            cls.set_last_update_time(timestamp)
+            print(f"Image saved. Updated last_update_time to: {timestamp}")
+
+            return web.json_response({"status": "success", "filename": filename, "render_pass": render_pass})
+
 
     RETURN_TYPES = ("IMAGE", "MASK")
     #RETURN_NAMES = ("image_output_name",)
-
     FUNCTION = "load_image"
-
-    #OUTPUT_NODE = False
-
+    OUTPUT_NODE = True
     CATEGORY = "TT"
 
     def test(self, image, string_field, print_to_screen):
@@ -78,8 +166,16 @@ class TT_Save_Pass:
             print(f"""Your input contains:
                 string_field aka input text: {string_field}
             """)
-            
-        image_path = folder_paths.get_annotated_filepath(image)
+            print(f"image: {image}")
+
+        
+
+        # output_dir = folder_paths.get_output_directory()
+        # image_path = folder_paths.get_annotated_filepath(image)
+        # image_path = os.path.join(self.RENDER_PASSES_DIRECTORY, self.DEFAULT_PASS)
+        
+        image_path = self.get_annotated_filepath(image)
+        print(f"image_path: {image_path}")
         
         img = node_helpers.pillow(Image.open, image_path)
         
@@ -135,21 +231,36 @@ class TT_Save_Pass:
     #@classmethod
     #def IS_CHANGED(s, image, string_field, int_field, float_field, print_to_screen):
     #    return ""
+    @classmethod
+    def IS_CHANGED(cls, image):
+        print(f"IS_CHANGED called----------------------------------. image: {image}")
+        image_path = cls.get_annotated_filepath(image)
+        m = hashlib.sha256()
+        with open(image_path, 'rb') as f:
+            m.update(f.read())
+        return m.digest().hex()
+
+
+
+
 
 # Set the web directory, any .js file in that directory will be loaded by the frontend as a frontend extension
 # WEB_DIRECTORY = "./somejs"
 
 
-# Add custom API routes, using router
-from aiohttp import web
-from server import PromptServer
-import folder_paths
+# # Add custom API routes, using router
+# from aiohttp import web
+# from server import PromptServer
+# import folder_paths
 
-@PromptServer.instance.routes.get("/beauty")
-async def get_hello(request):
+# @PromptServer.instance.routes.get("/beauty")
+# async def get_hello(request):
     
-    return web.json_response("beauty pass")
+#     return web.json_response("beauty pass")
 
+
+# Register the route
+TT_Save_Pass.save_image_route()
 
 # A dictionary that contains all nodes you want to export with their names
 # NOTE: names should be globally unique
