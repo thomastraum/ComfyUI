@@ -14,6 +14,7 @@ import imghdr
 
 import hashlib
 import json
+import urllib.request
 
 class TT_Save_Pass:
 
@@ -53,35 +54,24 @@ class TT_Save_Pass:
     def __init__(self):
         pass
     
-    @classmethod
-    def get_last_update_time(cls):
-        print(f"get_last_update_time called. LAST_UPDATE_FILE: {cls.LAST_UPDATE_FILE}")
-        if os.path.exists(cls.LAST_UPDATE_FILE):
-            with open(cls.LAST_UPDATE_FILE, 'r') as f:
-                data = json.load(f)
-                return data.get('last_update_time', 0)
-        return 0
-
-    @classmethod
-    def set_last_update_time(cls, timestamp):
-        os.makedirs(os.path.dirname(cls.LAST_UPDATE_FILE), exist_ok=True)
-        with open(cls.LAST_UPDATE_FILE, 'w') as f:
-            json.dump({'last_update_time': timestamp}, f)
 
     @classmethod
     def INPUT_TYPES(cls):
-        input_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, cls.DEFAULT_PASS)
-        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
-        return {
-            "required":{
-                "image": (sorted(files), {"image_upload": True}),
+        input_types = {
+            "required": {
                 "print_to_screen": (["enable", "disable"],),
-                "string_field": ("STRING", {
-                    "multiline": False,
-                    "default": "Hello World!"
-                }),
-            },
+                "choose_pass": (["beauty", "depth", "normal"],),
+            }
         }
+
+        for pass_name in os.listdir(cls.RENDER_PASSES_DIRECTORY):
+            pass_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, pass_name)
+            if os.path.isdir(pass_dir):
+                files = [f for f in os.listdir(pass_dir) if os.path.isfile(os.path.join(pass_dir, f))]
+                input_types["required"][f"image_{pass_name}"] = (sorted(files), {"image_upload": False})
+
+        return input_types
+
     @classmethod
     def get_render_pass_directory(cls, pass_name: str) -> str:
         pass_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, pass_name)
@@ -116,6 +106,22 @@ class TT_Save_Pass:
         return name, None
     
     @classmethod
+    async def get_last_workflow(cls):
+        try:
+            url = "http://127.0.0.1:8188/history"
+            with urllib.request.urlopen(url) as response:
+                history = json.loads(response.read())
+                if history:
+                    last_prompt = history[0]
+                    return last_prompt['prompt']
+                else:
+                    print("No history found")
+                    return None
+        except Exception as e:
+            print(f"Error fetching last workflow: {e}")
+            return None
+    
+    @classmethod
     def save_image_route(cls):
         @PromptServer.instance.routes.post("/inputs")
         async def save_image(request):
@@ -141,51 +147,40 @@ class TT_Save_Pass:
             with open(filepath, 'wb') as f:
                 f.write(image_content)
 
-            cls.set_last_update_time(timestamp)
-            print(f"Image saved. Updated last_update_time to: {timestamp}")
-
             return web.json_response({"status": "success", "filename": filename, "render_pass": render_pass})
 
 
-    RETURN_TYPES = ("IMAGE", "MASK")
+    # RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_TYPES = ("IMAGE",)
+    OUTPUT_NODE = True
     #RETURN_NAMES = ("image_output_name",)
     FUNCTION = "load_image"
     OUTPUT_NODE = True
     CATEGORY = "TT"
 
-    def test(self, image, string_field, print_to_screen):
+    def load_image(self, image_beauty, image_depth, image_normal, choose_pass, print_to_screen):
         if print_to_screen == "enable":
-            print(f"""Your input contains:
-                string_field aka input text: {string_field}
-            """)
-        #do some processing on the image, in this example I just invert it
-        image = 1.0 - image
-        return (image,)
+            print("load_image called----------------------------")
+            print(f"Your input contains:")
+            print(f"choose_pass: {choose_pass}")
 
-    def load_image(self, image, string_field, print_to_screen):
-        if print_to_screen == "enable":
-            print(f"""Your input contains:
-                string_field aka input text: {string_field}
-            """)
-            print(f"image: {image}")
+        # Select the appropriate image based on choose_pass
+        if choose_pass == "beauty":
+            selected_image = image_beauty
+        elif choose_pass == "depth":
+            selected_image = image_depth
+        elif choose_pass == "normal":
+            selected_image = image_normal
+        else:
+            raise ValueError(f"Invalid choose_pass value: {choose_pass}")
 
-        
-
-        # output_dir = folder_paths.get_output_directory()
-        # image_path = folder_paths.get_annotated_filepath(image)
-        # image_path = os.path.join(self.RENDER_PASSES_DIRECTORY, self.DEFAULT_PASS)
-        
-        image_path = self.get_annotated_filepath(image)
-        print(f"image_path: {image_path}")
-        
+        # Load the selected image file and convert it to a tensor
+        image_path = self.get_annotated_filepath(selected_image, default_pass=choose_pass)
         img = node_helpers.pillow(Image.open, image_path)
         
         output_images = []
-        output_masks = []
         w, h = None, None
 
-        excluded_formats = ['MPO']
-        
         for i in ImageSequence.Iterator(img):
             i = node_helpers.pillow(ImageOps.exif_transpose, i)
 
@@ -202,22 +197,14 @@ class TT_Save_Pass:
             
             image = np.array(image).astype(np.float32) / 255.0
             image = torch.from_numpy(image)[None,]
-            if 'A' in i.getbands():
-                mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
-                mask = 1. - torch.from_numpy(mask)
-            else:
-                mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
             output_images.append(image)
-            output_masks.append(mask.unsqueeze(0))
 
-        if len(output_images) > 1 and img.format not in excluded_formats:
+        if len(output_images) > 1:
             output_image = torch.cat(output_images, dim=0)
-            output_mask = torch.cat(output_masks, dim=0)
         else:
             output_image = output_images[0]
-            output_mask = output_masks[0]
 
-        return (output_image, output_mask)
+        return (output_image,)
 
     
     
@@ -234,12 +221,16 @@ class TT_Save_Pass:
     #    return ""
     @classmethod
     def IS_CHANGED(cls, image):
-        print(f"IS_CHANGED called----------------------------------. image: {image}")
-        image_path = cls.get_annotated_filepath(image)
-        m = hashlib.sha256()
-        with open(image_path, 'rb') as f:
-            m.update(f.read())
-        return m.digest().hex()
+        print(f"IS_CHANGED called----------------------------------")
+        return time.time()
+        # image_path = cls.get_annotated_filepath(image)
+        # m = hashlib.sha256()
+        # with open(image_path, 'rb') as f:
+        #     m.update(f.read())
+        # return m.digest().hex()
+
+
+
 
 
 
