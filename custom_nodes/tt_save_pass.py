@@ -117,14 +117,15 @@ class TT_Save_Pass:
     
     @classmethod
     def save_image_route(cls):
-        @PromptServer.instance.routes.post("/save_image")
+        @PromptServer.instance.routes.post("/inputs")
         async def save_image(request):
             data = await request.post()
             image = data['uploaded_image']
             render_pass = data.get('image_type', 'unknown')
 
             # Get the original filename
-            original_filename = image.filename
+            print(f"Received filename: {image.filename}")
+            original_filename = os.path.basename(image.filename)
             name, ext = os.path.splitext(original_filename)
 
             image_content = image.file.read()
