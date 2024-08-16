@@ -27,3 +27,4 @@ web_custom_versions/
 *.jpg
 *.jpeg
 *.png
+.DS_Store
