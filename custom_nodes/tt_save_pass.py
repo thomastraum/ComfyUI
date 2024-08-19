@@ -14,7 +14,7 @@ import imghdr
 
 import hashlib
 import json
-import urllib.request
+import aiohttp
 
 class TT_Save_Pass:
 
@@ -109,16 +109,23 @@ class TT_Save_Pass:
     async def get_last_workflow(cls):
         try:
             url = "http://127.0.0.1:8188/history"
-            with urllib.request.urlopen(url) as response:
-                history = json.loads(response.read())
-                if history:
-                    last_prompt = history[0]
-                    return last_prompt['prompt']
-                else:
-                    print("No history found")
-                    return None
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    history = await response.json()
+                    if history and isinstance(history, dict):
+                        # Get the first (most recent) entry
+                        last_entry_id, last_entry = next(iter(history.items()))
+                        if isinstance(last_entry, dict) and 'prompt' in last_entry:
+                            #  third entry in array is the prompt
+                            return last_entry['prompt'][2]
+                        else:
+                            print(f"Invalid structure in the last history item: {last_entry_id}")
+                            return None
+                    else:
+                        print("No valid history found")
+                        return None
         except Exception as e:
-            print(f"Error fetching last workflow: {e}")
+            print(f"Error fetching last workflow: {str(e)}")
             return None
     
     @classmethod
@@ -137,17 +144,17 @@ class TT_Save_Pass:
             image_content = image.file.read()
             image_type = cls.get_image_type(image_content)
 
-            # Add timestamp to the filename
-            timestamp = int(time.time())
-            filename = f"{name}_{timestamp}{ext}"
+            # Use await to call the asynchronous method
+            last_workflow = await cls.get_last_workflow()
+            # print(f"last_workflow: {last_workflow}")
 
             render_pass_dir = cls.get_render_pass_directory(render_pass)
-            filepath = os.path.join(render_pass_dir, filename)
+            filepath = os.path.join(render_pass_dir, name)
 
             with open(filepath, 'wb') as f:
                 f.write(image_content)
 
-            return web.json_response({"status": "success", "filename": filename, "render_pass": render_pass})
+            return web.json_response({"status": "success", "filename": name, "render_pass": render_pass})
 
 
     # RETURN_TYPES = ("IMAGE", "MASK")
@@ -220,7 +227,7 @@ class TT_Save_Pass:
     #def IS_CHANGED(s, image, string_field, int_field, float_field, print_to_screen):
     #    return ""
     @classmethod
-    def IS_CHANGED(cls, image):
+    def IS_CHANGED(cls, image_beauty, image_depth, image_normal, choose_pass, print_to_screen):
         print(f"IS_CHANGED called----------------------------------")
         return time.time()
         # image_path = cls.get_annotated_filepath(image)
