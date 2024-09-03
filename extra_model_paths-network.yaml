@@ -1,0 +1,29 @@
+
+
+#config for comfyui
+#your base path should be either an existing comfy install or a central folder where you store all of your models, loras, etc.
+
+comfyui:
+  base_path: /mnt/L/ComfyUI
+  checkpoints: models/checkpoints/
+  clip: models/clip/
+  clip_vision: models/clip_vision/
+  configs: models/configs/
+  controlnet: models/controlnet/
+  embeddings: models/embeddings/
+  loras: models/loras/
+  upscale_models: models/upscale_models/
+  unet: models/unet/
+  vae: models/vae/
+
+
+
+xlabs:
+  base_path: /mnt/L/ComfyUI/models/xlabs
+  checkpoints: flux/
+  loras: loras/
+  controlnet: controlnets/
+
+#    checkpoints: models/checkpoints
+#    gligen: models/gligen
+#    custom_nodes: path/custom_nodes
