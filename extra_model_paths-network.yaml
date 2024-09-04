@@ -4,7 +4,7 @@
 #your base path should be either an existing comfy install or a central folder where you store all of your models, loras, etc.
 
 comfyui:
-  base_path: /mnt/L/ComfyUI
+  base_path: /mnt/L/sd/ComfyUI
   checkpoints: models/checkpoints/
   clip: models/clip/
   clip_vision: models/clip_vision/
@@ -19,7 +19,7 @@ comfyui:
 
 
 # xlabs:
-#   base_path: /mnt/L/ComfyUI/models/xlabs
+#   base_path: /mnt/L/sd/ComfyUI/models/xlabs
 #   checkpoints: flux/
 #   loras: loras/
 #   controlnet: controlnets/

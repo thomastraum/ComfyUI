@@ -133,8 +133,8 @@ class TT_Save_Pass:
         @PromptServer.instance.routes.post("/inputs")
         async def save_image(request):
             data = await request.post()
-            image = data['uploaded_image']
-            render_pass = data.get('image_type', 'unknown')
+            image = data['uploaded-image']
+            render_pass = data.get('image-type', 'unknown')
 
             # Get the original filename
             print(f"Received filename: {image.filename}")
@@ -145,7 +145,7 @@ class TT_Save_Pass:
             image_type = cls.get_image_type(image_content)
 
             # Use await to call the asynchronous method
-            last_workflow = await cls.get_last_workflow()
+            # last_workflow = await cls.get_last_workflow()
             # print(f"last_workflow: {last_workflow}")
 
             render_pass_dir = cls.get_render_pass_directory(render_pass)
