@@ -18,11 +18,11 @@ comfyui:
 
 
 
-xlabs:
-  base_path: /mnt/L/ComfyUI/models/xlabs
-  checkpoints: flux/
-  loras: loras/
-  controlnet: controlnets/
+# xlabs:
+#   base_path: /mnt/L/ComfyUI/models/xlabs
+#   checkpoints: flux/
+#   loras: loras/
+#   controlnet: controlnets/
 
 #    checkpoints: models/checkpoints
 #    gligen: models/gligen
