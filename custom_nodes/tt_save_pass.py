@@ -47,16 +47,16 @@ class TT_Save_Pass:
         The entry point method. The name of this method must be the same as the value of property `FUNCTION`.
         For example, if `FUNCTION = "execute"` then this method's name must be `execute`, if `FUNCTION = "foo"` then it must be `foo`.
     """
-    RENDER_PASSES_DIRECTORY = os.path.join(folder_paths.get_output_directory(), "render_passes")
+    RENDER_PASSES_DIRECTORY = os.path.join(folder_paths.get_input_directory(), "render_passes")
     DEFAULT_PASS = "beauty"
     LAST_UPDATE_FILE = os.path.join(RENDER_PASSES_DIRECTORY, "last_update.json")
     
     def __init__(self):
         pass
-    
 
     @classmethod
     def INPUT_TYPES(cls):
+        cls.ensure_render_directory()
         input_types = {
             "required": {
                 "print_to_screen": (["enable", "disable"],),
@@ -73,10 +73,8 @@ class TT_Save_Pass:
         return input_types
 
     @classmethod
-    def get_render_pass_directory(cls, pass_name: str) -> str:
-        pass_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, pass_name)
-        os.makedirs(pass_dir, exist_ok=True)
-        return pass_dir
+    def ensure_render_directory(cls):
+        os.makedirs(cls.RENDER_PASSES_DIRECTORY, exist_ok=True)
 
     @staticmethod
     def get_image_type(file_content: bytes) -> str:
@@ -144,17 +142,21 @@ class TT_Save_Pass:
             image_content = image.file.read()
             image_type = cls.get_image_type(image_content)
 
-            # Use await to call the asynchronous method
-            # last_workflow = await cls.get_last_workflow()
-            # print(f"last_workflow: {last_workflow}")
+            # If no extension, use the detected image type
+            if not ext:
+                ext = f".{image_type}"
 
             render_pass_dir = cls.get_render_pass_directory(render_pass)
-            filepath = os.path.join(render_pass_dir, name)
+            filepath = os.path.join(render_pass_dir, f"{name}{ext}")
 
             with open(filepath, 'wb') as f:
                 f.write(image_content)
 
-            return web.json_response({"status": "success", "filename": name, "render_pass": render_pass})
+            return web.json_response({
+                "status": "success", 
+                "filename": f"{name}{ext}", 
+                "render_pass": render_pass
+            })
 
 
     # RETURN_TYPES = ("IMAGE", "MASK")
