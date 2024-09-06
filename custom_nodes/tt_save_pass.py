@@ -148,6 +148,7 @@ class TT_Save_Pass:
 
             # render_pass_dir = cls.get_render_pass_directory(render_pass)
             render_pass_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, render_pass)
+            os.makedirs(render_pass_dir, exist_ok=True)
             filepath = os.path.join(render_pass_dir, f"{name}{ext}")
 
             with open(filepath, 'wb') as f:
