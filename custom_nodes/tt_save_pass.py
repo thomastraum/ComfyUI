@@ -146,7 +146,8 @@ class TT_Save_Pass:
             if not ext:
                 ext = f".{image_type}"
 
-            render_pass_dir = cls.get_render_pass_directory(render_pass)
+            # render_pass_dir = cls.get_render_pass_directory(render_pass)
+            render_pass_dir = os.path.join(cls.RENDER_PASSES_DIRECTORY, render_pass)
             filepath = os.path.join(render_pass_dir, f"{name}{ext}")
 
             with open(filepath, 'wb') as f:
