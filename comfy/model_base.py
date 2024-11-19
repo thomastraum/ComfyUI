@@ -24,6 +24,7 @@ from comfy.ldm.cascade.stage_b import StageB
 from comfy.ldm.modules.encoders.noise_aug_modules import CLIPEmbeddingNoiseAugmentation
 from comfy.ldm.modules.diffusionmodules.upscaling import ImageConcatWithNoiseAugmentation
 from comfy.ldm.modules.diffusionmodules.mmdit import OpenAISignatureMMDITWrapper
+import comfy.ldm.genmo.joint_model.asymm_models_joint
 import comfy.ldm.aura.mmdit
 import comfy.ldm.hydit.models
 import comfy.ldm.audio.dit
@@ -96,7 +97,8 @@ class BaseModel(torch.nn.Module):
 
         if not unet_config.get("disable_unet_model_creation", False):
             if model_config.custom_operations is None:
-                operations = comfy.ops.pick_operations(unet_config.get("dtype", None), self.manual_cast_dtype)
+                fp8 = model_config.optimizations.get("fp8", model_config.scaled_fp8 is not None)
+                operations = comfy.ops.pick_operations(unet_config.get("dtype", None), self.manual_cast_dtype, fp8_optimizations=fp8, scaled_fp8=model_config.scaled_fp8)
             else:
                 operations = model_config.custom_operations
             self.diffusion_model = unet_model(**unet_config, device=device, operations=operations)
@@ -151,8 +153,7 @@ class BaseModel(torch.nn.Module):
     def encode_adm(self, **kwargs):
         return None
 
-    def extra_conds(self, **kwargs):
-        out = {}
+    def concat_cond(self, **kwargs):
         if len(self.concat_keys) > 0:
             cond_concat = []
             denoise_mask = kwargs.get("concat_mask", kwargs.get("denoise_mask", None))
@@ -191,7 +192,14 @@ class BaseModel(torch.nn.Module):
                     elif ck == "masked_image":
                         cond_concat.append(self.blank_inpaint_image_like(noise))
             data = torch.cat(cond_concat, dim=1)
-            out['c_concat'] = comfy.conds.CONDNoiseShape(data)
+            return data
+        return None
+
+    def extra_conds(self, **kwargs):
+        out = {}
+        concat_cond = self.concat_cond(**kwargs)
+        if concat_cond is not None:
+            out['c_concat'] = comfy.conds.CONDNoiseShape(concat_cond)
 
         adm = self.encode_adm(**kwargs)
         if adm is not None:
@@ -244,6 +252,10 @@ class BaseModel(torch.nn.Module):
             extra_sds.append(self.model_config.process_clip_vision_state_dict_for_saving(clip_vision_state_dict))
 
         unet_state_dict = self.diffusion_model.state_dict()
+
+        if self.model_config.scaled_fp8 is not None:
+            unet_state_dict["scaled_fp8"] = torch.tensor([], dtype=self.model_config.scaled_fp8)
+
         unet_state_dict = self.model_config.process_unet_state_dict_for_saving(unet_state_dict)
 
         if self.model_type == ModelType.V_PREDICTION:
@@ -517,9 +529,7 @@ class SD_X4Upscaler(BaseModel):
         return out
 
 class IP2P:
-    def extra_conds(self, **kwargs):
-        out = {}
-
+    def concat_cond(self, **kwargs):
         image = kwargs.get("concat_latent_image", None)
         noise = kwargs.get("noise", None)
         device = kwargs["device"]
@@ -531,17 +541,14 @@ class IP2P:
             image = utils.common_upscale(image.to(device), noise.shape[-1], noise.shape[-2], "bilinear", "center")
 
         image = utils.resize_to_batch_size(image, noise.shape[0])
+        return self.process_ip2p_image_in(image)
 
-        out['c_concat'] = comfy.conds.CONDNoiseShape(self.process_ip2p_image_in(image))
-        adm = self.encode_adm(**kwargs)
-        if adm is not None:
-            out['y'] = comfy.conds.CONDRegular(adm)
-        return out
 
 class SD15_instructpix2pix(IP2P, BaseModel):
     def __init__(self, model_config, model_type=ModelType.EPS, device=None):
         super().__init__(model_config, model_type, device=device)
         self.process_ip2p_image_in = lambda image: image
+
 
 class SDXL_instructpix2pix(IP2P, SDXL):
     def __init__(self, model_config, model_type=ModelType.EPS, device=None):
@@ -712,4 +719,19 @@ class Flux(BaseModel):
         if cross_attn is not None:
             out['c_crossattn'] = comfy.conds.CONDRegular(cross_attn)
         out['guidance'] = comfy.conds.CONDRegular(torch.FloatTensor([kwargs.get("guidance", 3.5)]))
+        return out
+
+class GenmoMochi(BaseModel):
+    def __init__(self, model_config, model_type=ModelType.FLOW, device=None):
+        super().__init__(model_config, model_type, device=device, unet_model=comfy.ldm.genmo.joint_model.asymm_models_joint.AsymmDiTJoint)
+
+    def extra_conds(self, **kwargs):
+        out = super().extra_conds(**kwargs)
+        attention_mask = kwargs.get("attention_mask", None)
+        if attention_mask is not None:
+            out['attention_mask'] = comfy.conds.CONDRegular(attention_mask)
+            out['num_tokens'] = comfy.conds.CONDConstant(max(1, torch.sum(attention_mask).item()))
+        cross_attn = kwargs.get("cross_attn", None)
+        if cross_attn is not None:
+            out['c_crossattn'] = comfy.conds.CONDRegular(cross_attn)
         return out

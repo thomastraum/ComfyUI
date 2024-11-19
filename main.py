@@ -9,7 +9,7 @@ from comfy.cli_args import args
 from app.logger import setup_logger
 
 
-setup_logger(verbose=args.verbose)
+setup_logger(log_level=args.verbose)
 
 
 def execute_prestartup_script():
@@ -71,6 +71,7 @@ if os.name == "nt":
 if __name__ == "__main__":
     if args.cuda_device is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)
+        os.environ['HIP_VISIBLE_DEVICES'] = str(args.cuda_device)
         logging.info("Set cuda device to: {}".format(args.cuda_device))
 
     if args.deterministic:
