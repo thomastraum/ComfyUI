@@ -23,3 +23,6 @@ web_custom_versions/
 .DS_Store
 .venv//models/
 /models/
+openapi.yaml
+filtered-openapi.yaml
+uv.lock

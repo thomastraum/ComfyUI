@@ -8,9 +8,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import comfy.ldm.common_dit
 
-from comfy.ldm.modules.diffusionmodules.mmdit import TimestepEmbedder, RMSNorm
+from comfy.ldm.modules.diffusionmodules.mmdit import TimestepEmbedder
 from comfy.ldm.modules.attention import optimized_attention_masked
 from comfy.ldm.flux.layers import EmbedND
+import comfy.patcher_extension
 
 
 def modulate(x, scale):
@@ -64,8 +65,8 @@ class JointAttention(nn.Module):
         )
 
         if qk_norm:
-            self.q_norm = RMSNorm(self.head_dim, elementwise_affine=True, **operation_settings)
-            self.k_norm = RMSNorm(self.head_dim, elementwise_affine=True, **operation_settings)
+            self.q_norm = operation_settings.get("operations").RMSNorm(self.head_dim, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
+            self.k_norm = operation_settings.get("operations").RMSNorm(self.head_dim, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
         else:
             self.q_norm = self.k_norm = nn.Identity()
 
@@ -242,11 +243,11 @@ class JointTransformerBlock(nn.Module):
             operation_settings=operation_settings,
         )
         self.layer_id = layer_id
-        self.attention_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=True, **operation_settings)
-        self.ffn_norm1 = RMSNorm(dim, eps=norm_eps, elementwise_affine=True, **operation_settings)
+        self.attention_norm1 = operation_settings.get("operations").RMSNorm(dim, eps=norm_eps, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
+        self.ffn_norm1 = operation_settings.get("operations").RMSNorm(dim, eps=norm_eps, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
 
-        self.attention_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=True, **operation_settings)
-        self.ffn_norm2 = RMSNorm(dim, eps=norm_eps, elementwise_affine=True, **operation_settings)
+        self.attention_norm2 = operation_settings.get("operations").RMSNorm(dim, eps=norm_eps, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
+        self.ffn_norm2 = operation_settings.get("operations").RMSNorm(dim, eps=norm_eps, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
 
         self.modulation = modulation
         if modulation:
@@ -431,7 +432,7 @@ class NextDiT(nn.Module):
 
         self.t_embedder = TimestepEmbedder(min(dim, 1024), **operation_settings)
         self.cap_embedder = nn.Sequential(
-            RMSNorm(cap_feat_dim, eps=norm_eps, elementwise_affine=True, **operation_settings),
+            operation_settings.get("operations").RMSNorm(cap_feat_dim, eps=norm_eps, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype")),
             operation_settings.get("operations").Linear(
                 cap_feat_dim,
                 dim,
@@ -457,7 +458,7 @@ class NextDiT(nn.Module):
                 for layer_id in range(n_layers)
             ]
         )
-        self.norm_final = RMSNorm(dim, eps=norm_eps, elementwise_affine=True, **operation_settings)
+        self.norm_final = operation_settings.get("operations").RMSNorm(dim, eps=norm_eps, elementwise_affine=True, device=operation_settings.get("device"), dtype=operation_settings.get("dtype"))
         self.final_layer = FinalLayer(dim, patch_size, self.out_channels, operation_settings=operation_settings)
 
         assert (dim // n_heads) == sum(axes_dims)
@@ -590,8 +591,15 @@ class NextDiT(nn.Module):
 
         return padded_full_embed, mask, img_sizes, l_effective_cap_len, freqs_cis
 
-    # def forward(self, x, t, cap_feats, cap_mask):
     def forward(self, x, timesteps, context, num_tokens, attention_mask=None, **kwargs):
+        return comfy.patcher_extension.WrapperExecutor.new_class_executor(
+            self._forward,
+            self,
+            comfy.patcher_extension.get_all_wrappers(comfy.patcher_extension.WrappersMP.DIFFUSION_MODEL, kwargs.get("transformer_options", {}))
+        ).execute(x, timesteps, context, num_tokens, attention_mask, **kwargs)
+
+    # def forward(self, x, t, cap_feats, cap_mask):
+    def _forward(self, x, timesteps, context, num_tokens, attention_mask=None, **kwargs):
         t = 1.0 - timesteps
         cap_feats = context
         cap_mask = attention_mask
